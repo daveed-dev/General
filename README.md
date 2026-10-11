@@ -1,7 +1,7 @@
-# Cat & Khal's Country Store
+# Cat & Khal's Porch Store
 
 A cheerful, responsive one-page site for Cat and Khal's front-porch
-country store. The rotating menu describes the kinds of treats they sell
+store. The rotating menu describes the kinds of treats they sell
 without promising specific items, prices, opening hours, or an address.
 
 ## Preview locally
