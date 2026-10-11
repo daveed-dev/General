@@ -1,0 +1,71 @@
+name: Auto-merge storefront pull requests
+
+on:
+  workflow_run:
+    workflows:
+      - Storefront checks
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch == 'daveed-dev-catherine-khali-country-store'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge for eligible storefront pull requests
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const candidates = run.pull_requests || [];
+
+            if (candidates.length === 0) {
+              core.notice("No pull request is associated with this successful check run.");
+              return;
+            }
+
+            for (const candidate of candidates) {
+              if (!candidate.number || !candidate.head?.sha) continue;
+
+              const { data: pullRequest } = await github.rest.pulls.get({
+                ...context.repo,
+                pull_number: candidate.number,
+              });
+
+              const isEligible =
+                pullRequest.state === "open" &&
+                !pullRequest.draft &&
+                pullRequest.user.login === "daveed-dev" &&
+                pullRequest.base.ref === "main" &&
+                pullRequest.head.ref === "daveed-dev-catherine-khali-country-store" &&
+                pullRequest.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}` &&
+                pullRequest.head.sha === candidate.head.sha;
+
+              if (!isEligible) {
+                core.notice(`Pull request #${candidate.number} is not an eligible storefront PR.`);
+                continue;
+              }
+
+              await github.graphql(
+                `mutation($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: SQUASH
+                  }) {
+                    pullRequest {
+                      number
+                    }
+                  }
+                }`,
+                { pullRequestId: pullRequest.node_id },
+              );
+
+              core.notice(`Enabled squash auto-merge for storefront pull request #${pullRequest.number}.`);
+            }

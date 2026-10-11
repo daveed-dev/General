@@ -1,0 +1,92 @@
+name: Storefront checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Validate page links and local assets
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import unquote, urlsplit
+
+          root = Path.cwd().resolve()
+          page = root / "index.html"
+
+          class StorefrontParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.ids = set()
+                  self.fragments = []
+                  self.local_resources = []
+                  self.duplicate_ids = set()
+                  self.images_without_alt = 0
+
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  element_id = attrs.get("id")
+                  if element_id:
+                      if element_id in self.ids:
+                          self.duplicate_ids.add(element_id)
+                      self.ids.add(element_id)
+
+                  href = attrs.get("href", "")
+                  if href.startswith("#") and len(href) > 1:
+                      self.fragments.append(unquote(href[1:]))
+
+                  if tag == "img":
+                      if not attrs.get("alt", "").strip():
+                          self.images_without_alt += 1
+                      self.add_local_resource(attrs.get("src", ""))
+                  elif tag == "link" and "stylesheet" in attrs.get("rel", "").lower().split():
+                      self.add_local_resource(href)
+
+              def add_local_resource(self, url):
+                  parsed = urlsplit(url)
+                  if url and not parsed.scheme and not parsed.netloc:
+                      self.local_resources.append(unquote(parsed.path.lstrip("/")))
+
+          if not page.is_file():
+              raise SystemExit("index.html is missing")
+
+          parser = StorefrontParser()
+          parser.feed(page.read_text(encoding="utf-8"))
+
+          missing_fragments = sorted(set(parser.fragments) - parser.ids)
+          if missing_fragments:
+              raise SystemExit(f"Unresolved in-page links: {missing_fragments}")
+          if parser.duplicate_ids:
+              raise SystemExit(f"Duplicate element IDs: {sorted(parser.duplicate_ids)}")
+          if parser.images_without_alt:
+              raise SystemExit(f"{parser.images_without_alt} image(s) are missing alt text")
+
+          for resource in parser.local_resources:
+              if not resource:
+                  continue
+              target = (root / resource).resolve()
+              if root not in target.parents or not target.is_file():
+                  raise SystemExit(f"Missing or invalid local asset: {resource}")
+
+          print("Storefront links and local assets are valid.")
+          PY
