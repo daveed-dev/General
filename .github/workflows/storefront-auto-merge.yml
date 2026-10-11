@@ -12,14 +12,14 @@ permissions:
   pull-requests: write
 
 jobs:
-  enable-auto-merge:
+  merge-storefront-pr:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.head_branch == 'daveed-dev-catherine-khali-country-store'
     runs-on: ubuntu-latest
     steps:
-      - name: Enable auto-merge for eligible storefront pull requests
+      - name: Merge or queue eligible storefront pull requests
         uses: actions/github-script@v7
         with:
           script: |
@@ -50,6 +50,25 @@ jobs:
 
               if (!isEligible) {
                 core.notice(`Pull request #${candidate.number} is not an eligible storefront PR.`);
+                continue;
+              }
+
+              if (pullRequest.mergeable_state === "clean") {
+                const result = await github.rest.pulls.merge({
+                  ...context.repo,
+                  pull_number: pullRequest.number,
+                  merge_method: "squash",
+                  sha: candidate.head.sha,
+                });
+
+                core.notice(`Merged storefront pull request #${pullRequest.number} at ${result.data.sha}.`);
+                continue;
+              }
+
+              if (!["blocked", "behind", "unstable"].includes(pullRequest.mergeable_state)) {
+                core.notice(
+                  `Pull request #${pullRequest.number} is not mergeable yet (${pullRequest.mergeable_state}).`,
+                );
                 continue;
               }
 
