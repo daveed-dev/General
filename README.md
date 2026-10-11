@@ -1,6 +1,6 @@
-# Catherine & Khali's Country Store
+# Cat & Khal's Country Store
 
-A cheerful, responsive one-page site for Catherine and Khali's front-porch
+A cheerful, responsive one-page site for Cat and Khal's front-porch
 country store. The rotating menu describes the kinds of treats they sell
 without promising specific items, prices, opening hours, or an address.
 
